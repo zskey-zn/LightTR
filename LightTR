@@ -1,0 +1,158 @@
+#!/bin/bash
+# 脚本名称：LightTR
+# 描述：重构后的串联重复聚类工具
+# 帮助信息函数
+usage() {
+    echo "用法: $0 [选项]"
+    echo "串联重复聚类工具"
+    echo ""
+    echo "必须参数:"
+    echo "  -f <文件>, --fasta <文件>    输入FASTA文件"
+    echo ""
+    echo "可选参数:"
+    echo "  -h, --help                    显示此帮助信息"
+    echo "  -m <数值>, --minM <数值>     串联重复最小长度 (默认: 20)"
+    echo "  -M <数值>, --maxM <数值>     串联重复最大长度 (默认: 2000)"
+    echo "  -n <数值>, --minMonNum <数值> 最小重复次数 (默认: 5)"
+    echo "  -w <数值>, --window <数值>   合并相邻区域的窗口大小(bp) (默认: 400000)"
+    echo "  -t <参数>, --trf_para <参数>  TRF参数 (默认: \"2 7 7 80 10 20 2000 -d -h -l6\")"
+    echo "  -p <前缀>, --prefix <前缀>   输出文件前缀 (默认: output)"
+    echo "  -T <数值>, --threads <数值>  使用线程数 (默认: 1)"
+    echo "  -b, --no_blast                跳过BLAST步骤"
+    echo "  -r, --no_runTRF               跳过TRF步骤"
+    echo "  -s, --split                   启用分割模式"
+    echo ""
+    echo "示例:"
+    echo "  $0 -f genome.fasta -T 5"
+    echo "  $0 --fasta genome.fasta --window 200000 --threads 10 --split "
+    echo ""
+    echo "依赖工具: trf, blastn, python3, seqkit, bedtools, parallel"
+    exit 0
+}
+
+# 初始化参数变量
+MIN_M=20
+MAX_M=2000
+MIN_MON_NUM=5
+WINDOW=400000  # 新增：合并相邻区域的窗口大小
+TRF_PARA="2 7 7 80 10 20 2000 -d -h -l6"
+prefix="output"
+THREADS=1
+NO_BLAST="no"
+NO_RUNTRF="no"
+SPLIT="no"
+FASTA_FILE=""
+
+# 手动解析参数
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f|--fasta)
+            FASTA_FILE="$2"
+            if [ -z "$FASTA_FILE" ]; then
+                echo "错误: -f/--fasta 参数需要一个文件路径" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            shift
+            ;;
+        -m|--minM)
+            MIN_M="$2"
+            shift 2
+            ;;
+        -M|--maxM)
+            MAX_M="$2"
+            shift 2
+            ;;
+        -n|--minMonNum)
+            MIN_MON_NUM="$2"
+            shift 2
+            ;;
+        -w|--window)
+            WINDOW="$2"
+            shift 2
+            ;;
+        -t|--trf_para)
+            TRF_PARA="$2"
+            shift 2
+            ;;
+        -p|--prefix)
+            prefix="$2"
+            shift 2
+            ;;
+        -T|--threads)
+            THREADS="$2"
+            shift 2
+            ;;
+        -b|--no_blast)
+            NO_BLAST="yes"
+            shift
+            ;;
+        -r|--no_runTRF)
+            NO_RUNTRF="yes"
+            shift
+            ;;
+        -s|--split)
+            SPLIT="yes"
+            shift
+            ;;
+        *)
+            echo "错误: 未知的参数 '$1'" >&2
+            echo "使用 $0 -h 查看帮助信息" >&2
+            exit 1
+            ;;
+	esac
+done
+
+# 设置脚本目录和初始目录
+script_dir=$(cd "$(dirname "$0")" && pwd)
+initial_dir=$(pwd)
+
+#执行TRF步骤（如果未跳过）
+if [ "$NO_RUNTRF" = "no" ]; then
+	echo "执行TRF分析..." 
+	echo "使用 $THREADS 个线程"
+	# 使用parallel并行处理TRF分析（如果序列需要分割）
+	if [ "$SPLIT" = "yes" ]; then
+		echo "使用分割模式运行TRF..."
+		# 分割大文件并并行处理
+		seqkit split "$FASTA_FILE" -j "$THREADS" -O tmp_split -s 1 &&
+		# 使用parallel并行运行TRF
+		mkdir tmp_trf &&
+		cd tmp_trf &&
+		find ../tmp_split -name "*.fasta" | parallel -j "$THREADS" "trf {} $TRF_PARA "
+		cat *dat > ../${prefix}.TRF.dat &&
+		cd .. &&
+		python3 ${script_dir}/bin/repeat_to_gff.py ${prefix}.TRF.dat
+	else
+		# 直接运行TRF
+		trf "$FASTA_FILE" $TRF_PARA 
+		mv *.dat  ${prefix}.TRF.dat &&
+		python3 ${script_dir}/bin/repeat_to_gff.py ${prefix}.TRF.dat
+	fi
+	
+	echo "TRF分析完成"
+fi
+
+# 执行BLAST步骤（如果未跳过）
+if [ "$NO_BLAST" = "no" ]; then
+	echo "执行BLAST分析..."
+	echo "使用 $THREADS 个线程"
+	awk 'NF==9{split($9,a,"[=;]");print a[2],a[4],a[6],a[12]}' ${prefix}.TRF.dat.gff | awk -v a=$MIN_M -v b=$MAX_M -v c=$MIN_MON_NUM '$2>=a&&$2<=b&&$3>=c{print ">"$1"_"$2"_"$3"\n"$4}' |seqkit seq > FILTERED_tandem_repeats.fasta &&
+	makeblastdb -dbtype nucl -in FILTERED_tandem_repeats.fasta &&
+	blastn -db FILTERED_tandem_repeats.fasta -query FILTERED_tandem_repeats.fasta -outfmt '6 qseqid qlen qstart qend sacc slen sstart send length qcovs pident nident evalue' -evalue 1e-5 -num_threads ${THREADS} -out FILTERED_tandem_repeats.blast &&
+	awk '$10>80&&$11>80&&$1!=$5{print $1,$5}' FILTERED_tandem_repeats.blast > FILTERED_tandem_repeats.blast.filter &&
+	echo "BLAST分析完成"
+fi
+
+python3 ${script_dir}/bin/TR_cluster.py FILTERED_tandem_repeats.blast.filter ${prefix}.after_clusterin_summary.xls &&
+seqkit fx2tab FILTERED_tandem_repeats.fasta > FILTERED_tandem_repeats.tab &&
+awk -v OFS="\t" 'NR==1{print "Cluster ID\tSequence\tChr ID\tStrat\tEND"}NR==FNR{seq[$1]=$2}NF==9{split($9,a,"[=;]");pos[a[2]"_"a[4]"_"a[6]]=$1"\t"$4"\t"$5}NF==5{split($5,b,",");for(i in b){print $1,seq[$2],pos[b[i]]}}' FILTERED_tandem_repeats.tab ${prefix}.TRF.dat.gff ${prefix}.after_clusterin_summary.xls > CL.position.xls &&
+#提取前10的group
+sort -k 4,4nr ${prefix}.after_clusterin_summary.xls |head |awk '{print $1"_"int($4)}' | while read id ;do
+	i=`echo $id | awk -F "_" '{print $1}'` &&
+	grep -w $i CL.position.xls |cut -f3- |sort -k1,1 -k 2,2n | bedtools merge -i - -d 400000 |awk -v a=$id '{print $0"\tTR|"a}' > ${prefix}.TR.${id}.bed
+done
+
