@@ -2,7 +2,7 @@
 """
 Created on Thu Apr  3 15:39:17 CST 2025
 
-@author: zhengshang@frasergen.com
+@author: zhengshang@frasergen.com zhengshang-zn@qq.com
 """
 import sys
 import networkx as nx
@@ -56,3 +56,4 @@ f.close()
   
 
   
+
