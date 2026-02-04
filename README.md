@@ -35,17 +35,17 @@ Required Parameters:
   -f <FILE>, --fasta <FILE>    Input FASTA file
 
 Optional Parameters:
-  -h, --help                   Show this help message
-  -m <INT>, --minM <INT>       Minimum tandem repeat length (default: 20)
-  -M <INT>, --maxM <INT>       Maximum tandem repeat length (default: 2000)
-  -n <INT>, --minMonNum <INT>  Minimum number of repeats (default: 5)
-  -w <INT>, --window <INT>     Window size (bp) for merging adjacent regions (default: 400000)
+  -h, --help                       Show this help message
+  -m <INT>, --minM <INT>           Minimum tandem repeat length (default: 20)
+  -M <INT>, --maxM <INT>           Maximum tandem repeat length (default: 2000)
+  -n <INT>, --minMonNum <INT>      Minimum number of repeats (default: 5)
+  -w <INT>, --window <INT>         Window size (bp) for merging adjacent regions (default: 400000)
   -t <PARAMS>, --trf_para <PARAMS> TRF parameters (default: "2 7 7 80 10 20 2000 -d -h -l6")
-  -p <PREFIX>, --prefix <PREFIX> Output file prefix (default: output)
-  -T <INT>, --threads <INT>    Number of threads to use (default: 1)
-  -b, --no_blast               Skip the BLAST step
-  -r, --no_runTRF              Skip the TRF step
-  -s, --split                  Enable split mode for acceleration
+  -p <PREFIX>, --prefix <PREFIX>   Output file prefix (default: output)
+  -T <INT>, --threads <INT>        Number of threads to use (default: 1)
+  -b, --no_blast                   Skip the BLAST step
+  -r, --no_runTRF                  Skip the TRF step
+  -s, --split                      Enable split mode for acceleration
 
 Examples:
 # Run with default parameters (recommended with multiple threads)
