@@ -1,6 +1,7 @@
 #!/bin/bash
 # 脚本名称：LightTR
 # 描述：重构后的串联重复聚类工具
+# 作者：zhengshang@frasergen.com zhengshang-zn@qq.com
 # 帮助信息函数
 usage() {
     echo "用法: $0 [选项]"
